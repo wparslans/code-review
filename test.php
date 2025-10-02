@@ -11,7 +11,7 @@ $results = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}users WHERE user_log
 
 function BadFunctionNAME($Param) {
     echo "Bad style! " . $Param;
-}
+} 
 add_action('init', 'BadFunctionNAME');
 if ( isset($_POST['my_form_submit']) ) {
     update_option('my_plugin_option', $_POST['my_input']);
