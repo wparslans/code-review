@@ -8,7 +8,7 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 g = Github(auth=Auth.Token(os.getenv("GITHUB_TOKEN")))
 repo = g.get_repo(os.getenv("GITHUB_REPOSITORY"))
 
-# --- Get PR number from ref ---
+# --- Get PR number ---
 ref = os.getenv("GITHUB_REF", "")
 pr_number = None
 if "refs/pull/" in ref:
@@ -26,19 +26,22 @@ if os.path.exists("phpcs.json"):
     with open("phpcs.json", "r") as f:
         phpcs_report = json.load(f)
 
-phpcs_comments = []
+# --- PHPCS Comments (per file) ---
 if "files" in phpcs_report:
     for file, data in phpcs_report["files"].items():
+        issues = []
         for m in data.get("messages", []):
-            phpcs_comments.append(f"- **{file}:{m['line']}** {m['message']} ({m['source']})")
+            issues.append(f"- Line {m['line']}: {m['message']} ({m['source']})")
 
-if phpcs_comments:
-    try:
-        pr.create_issue_comment("### 🔍 PHPCS Issues\n\n" + "\n".join(phpcs_comments))
-    except Exception as e:
-        print(f"❌ Could not add PHPCS issue comment: {e}")
+        if issues:
+            try:
+                pr.create_issue_comment(
+                    f"### 🔍 PHPCS Issues in `{file}`\n\n" + "\n".join(issues)
+                )
+            except Exception as e:
+                print(f"❌ Could not add PHPCS comment for {file}: {e}")
 
-# --- AI Review ---
+# --- AI Review (per file) ---
 for f in pr.get_files():
     diff = f.patch
     if not diff:
@@ -67,16 +70,13 @@ for f in pr.get_files():
 
         comment = response["choices"][0]["message"]["content"]
 
+        # File-specific AI review
         try:
-            pr.create_review_comment(
-                body=f"🤖 **AI Review Suggestion**\n\n{comment}",
-                commit_id=pr.head.sha,
-                path=f.filename,
-                line=1,  # fallback: top of file
-                side="RIGHT"
+            pr.create_issue_comment(
+                f"🤖 **AI Review for `{f.filename}`**\n\n{comment}"
             )
         except Exception as e:
-            print(f"❌ Could not add AI inline comment: {e}")
+            print(f"❌ Could not add AI comment for {f.filename}: {e}")
 
     except Exception as e:
-        print(f"❌ AI Review failed: {e}")
+        print(f"❌ AI Review failed for {f.filename}: {e}")
