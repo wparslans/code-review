@@ -3,39 +3,31 @@ import json
 import openai
 from github import Github
 
+# --- GitHub context ---
 openai.api_key = os.getenv("OPENAI_API_KEY")
 g = Github(os.getenv("GITHUB_TOKEN"))
 
+with open(os.getenv("GITHUB_EVENT_PATH")) as f:
+    event = json.load(f)
+
 repo = g.get_repo(os.getenv("GITHUB_REPOSITORY"))
-pr_number = os.getenv("GITHUB_REF").split("/")[-1] if "pull" in os.getenv("GITHUB_REF", "") else None
+pr_number = event["pull_request"]["number"]
+pr = repo.get_pull(pr_number)
 
-if not pr_number:
-    exit(0)
-
-pr = repo.get_pull(int(pr_number))
-
-# Load PHPCS results
-phpcs_report = {}
+# --- Load PHPCS results ---
+phpcs_comments = []
 if os.path.exists("phpcs.json"):
     with open("phpcs.json", "r") as f:
         phpcs_report = json.load(f)
 
-# Add PHPCS inline comments
-if "files" in phpcs_report:
-    for file, data in phpcs_report["files"].items():
+    for file, data in phpcs_report.get("files", {}).items():
         for m in data.get("messages", []):
-            try:
-                pr.create_review_comment(
-                    body=f"**WPCS:** {m['message']} ({m['source']})",
-                    commit_id=pr.head.sha,
-                    path=file,
-                    line=m['line'],
-                    side="RIGHT"
-                )
-            except Exception as e:
-                print(f"Could not add PHPCS comment: {e}")
+            phpcs_comments.append(f"- `{file}:{m['line']}` → {m['message']} _(Rule: {m['source']})_")
 
-# AI Review for each changed file
+if phpcs_comments:
+    pr.create_issue_comment("### 🔍 PHPCS Issues\n\n" + "\n".join(phpcs_comments))
+
+# --- AI Review for each changed file ---
 for f in pr.get_files():
     diff = f.patch
     if not diff:
@@ -61,15 +53,4 @@ for f in pr.get_files():
     )
 
     comment = response["choices"][0]["message"]["content"]
-
-    try:
-        # Add AI comment to PR inline (top of file, safer fallback)
-        pr.create_review_comment(
-            body=f"**PR Review Bugs:**\n{comment}",
-            commit_id=pr.head.sha,
-            path=f.filename,
-            line=f.changes if f.changes > 0 else 1,  # fallback line
-            side="RIGHT"
-        )
-    except Exception as e:
-        print(f"Unknown Issue: {e}")
+    pr.create_issue_comment(f"### 🤖 AI Review for `{f.filename}`\n\n{comment}")
