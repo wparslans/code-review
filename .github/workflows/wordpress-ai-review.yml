@@ -1,0 +1,33 @@
+name: WordPress AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer, phpstan, phpcs
+
+      - name: Install dependencies
+        run: composer install --ignore-platform-reqs
+
+      - name: Run WordPress Coding Standards
+        run: vendor/bin/phpcs --standard=phpcs.xml.dist --report-full --report-json=phpcs.json
+
+      - name: Run AI Reviewer
+        if: always()
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python .github/ai_reviewer.py
