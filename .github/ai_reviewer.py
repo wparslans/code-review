@@ -34,21 +34,29 @@ if "files" in phpcs_report:
             relative_path = file_path.split("/")[-1]  # Just the filename
         else:
             relative_path = file_path
-        
+
         print(f"📁 Processing PHPCS issues for: {relative_path} (original: {file_path})")
-        
+
+        # Group messages by line number
+        issues_by_line = {}
         for message in data.get("messages", []):
+            line = message.get("line", 1) or 1
+            issue_text = f"**PHPCS {message['type']}:** {message['message']} ({message['source']})"
+            issues_by_line.setdefault(line, []).append(issue_text)
+
+        # Post one comment per line, combining issues
+        for line, issues in issues_by_line.items():
             try:
-                # Create review comment on specific line
+                comment_body = "\n".join(issues)
                 pr.create_review_comment(
-                    body=f"**PHPCS {message['type']}:** {message['message']} ({message['source']})",
+                    body=comment_body,
                     commit=pr.head.sha,
                     path=relative_path,
-                    line=message['line'] or 1  # Fallback to line 1 if line is 0
+                    line=line
                 )
-                print(f"✅ Added PHPCS review comment for {relative_path} line {message['line']}")
+                print(f"✅ Added PHPCS review comment for {relative_path} line {line} ({len(issues)} issues)")
             except Exception as e:
-                print(f"❌ Could not add PHPCS review comment for {relative_path} line {message['line']}: {e}")
+                print(f"❌ Could not add PHPCS review comment for {relative_path} line {line}: {e}")
 
 # --- AI Review (per file) ---
 for f in pr.get_files():
@@ -63,7 +71,6 @@ for f in pr.get_files():
     - Security (sanitization, escaping, nonce, SQL injection, XSS, CSRF)
     - Good practices (hooks, OOP, internationalization, performance, function prefix with loginpress_)
     - Suggest improvements with examples
-
     Code diff:\n{diff}
     """
 
