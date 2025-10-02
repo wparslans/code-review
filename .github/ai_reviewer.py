@@ -1,7 +1,6 @@
 import os
 import json
 import openai
-import re
 from github import Github, Auth
 
 # --- Setup ---
@@ -30,38 +29,41 @@ if os.path.exists("phpcs.json"):
 # --- PHPCS Comments as line reviews (per file) ---
 if "files" in phpcs_report:
     for file_path, data in phpcs_report["files"].items():
+        # Simple path conversion - take only the filename if path is complex
+        if "/" in file_path:
+            relative_path = file_path.split("/")[-1]  # Just the filename
+        else:
+            relative_path = file_path
+        
+        print(f"📁 Processing PHPCS issues for: {relative_path} (original: {file_path})")
+        
         for message in data.get("messages", []):
             try:
                 # Create review comment on specific line
                 pr.create_review_comment(
                     body=f"**PHPCS {message['type']}:** {message['message']} ({message['source']})",
                     commit=pr.head.sha,
-                    path=file_path,
-                    line=message['line']
+                    path=relative_path,
+                    line=message['line'] or 1  # Fallback to line 1 if line is 0
                 )
-                print(f"✅ Added PHPCS review comment for {file_path} line {message['line']}")
+                print(f"✅ Added PHPCS review comment for {relative_path} line {message['line']}")
             except Exception as e:
-                print(f"❌ Could not add PHPCS review comment for {file_path} line {message['line']}: {e}")
+                print(f"❌ Could not add PHPCS review comment for {relative_path} line {message['line']}: {e}")
 
-# --- AI Review with line-specific comments ---
+# --- AI Review (per file) ---
 for f in pr.get_files():
     diff = f.patch
     if not diff:
         continue
 
     prompt = f"""
-    Analyze this code diff and identify specific issues. For each issue found:
-    1. Mention the exact line number
-    2. Describe the problem
-    3. Suggest a fix
-    
-    Focus on:
-    - WordPress Coding Standards violations
-    - Security issues (SQL injection, XSS, CSRF, etc.)
-    - Bad practices (naming, structure, etc.)
-    
-    Format your response with line numbers clearly marked.
-    
+    You are an Expert WordPress code reviewer.
+    Review this code diff for:
+    - WordPress Coding Standards (WPCS)
+    - Security (sanitization, escaping, nonce, SQL injection, XSS, CSRF)
+    - Good practices (hooks, OOP, internationalization, performance, function prefix with loginpress_)
+    - Suggest improvements with examples
+
     Code diff:\n{diff}
     """
 
@@ -69,32 +71,24 @@ for f in pr.get_files():
         response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are an expert WordPress code reviewer. Provide line-specific feedback with exact line numbers."},
+                {"role": "system", "content": "You are an expert WordPress code reviewer."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=600
+            max_tokens=500
         )
 
-        ai_feedback = response["choices"][0]["message"]["content"]
-        
-        # Try to parse line numbers from AI response and create line comments
-        lines = ai_feedback.split('\n')
-        for line in lines:
-            # Look for patterns like "Line 12:", "line 10:", etc.
-            line_match = re.search(r'(?:line|Line)\s+(\d+)[:\-]', line)
-            if line_match:
-                line_number = int(line_match.group(1))
-                try:
-                    # Create review comment on the specific line
-                    pr.create_review_comment(
-                        body=f"**AI Review:** {line.strip()}",
-                        commit=pr.head.sha,
-                        path=f.filename,
-                        line=line_number
-                    )
-                    print(f"✅ Added AI review comment for {f.filename} line {line_number}")
-                except Exception as e:
-                    print(f"❌ Could not add AI review comment for {f.filename} line {line_number}: {e}")
+        comment = response["choices"][0]["message"]["content"]
+
+        # Create a review instead of individual comments for AI
+        try:
+            review = pr.create_review(
+                commit=pr.head.sha,
+                body=f"## 🤖 AI Review for `{f.filename}`\n\n{comment}",
+                event="COMMENT"
+            )
+            print(f"✅ Added AI review for {f.filename}")
+        except Exception as e:
+            print(f"❌ Could not add AI review for {f.filename}: {e}")
 
     except Exception as e:
         print(f"❌ AI Review failed for {f.filename}: {e}")
