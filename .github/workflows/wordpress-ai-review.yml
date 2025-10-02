@@ -16,18 +16,24 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
-          tools: composer, phpstan, phpcs
+          tools: composer, phpcs
 
-      - name: Install dependencies
+      - name: Install PHP dependencies
         run: composer install --ignore-platform-reqs
 
       - name: Run WordPress Coding Standards
-        run: vendor/bin/phpcs --standard=phpcs.xml.dist --report-full --report-json=phpcs.json
+        run: php vendor/bin/phpcs --standard=phpcs.xml.dist --report-full --report-json=phpcs.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install Python dependencies
+        run: python -m pip install --upgrade pip openai pygithub python-dotenv
 
       - name: Run AI Reviewer
-        if: always()
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python .github/ai_reviewer.py
+        run: python .github/ai_reviewer.py
