@@ -1,4 +1,4 @@
-name: WordPress Code Review
+name: WordPress AI Code Review
 
 on:
   pull_request:
@@ -6,61 +6,33 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
+  pull-requests: write   # ✅ allows posting PR comments
+  issues: write          # ✅ allows posting issue-style comments
 
 jobs:
-  phpcs-review:
-    name: PHPCS WordPress Standards
+  review:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # Setup PHP & Composer for PHPCS
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
           tools: composer, phpcs
 
-      - name: Cache Composer packages
-        uses: actions/cache@v3
-        with:
-          path: vendor
-          key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-php-
-
       - name: Install PHP dependencies
         run: composer install --ignore-platform-reqs --no-scripts --no-progress
 
+      # Run PHPCS and always continue (don't stop workflow on errors)
       - name: Run WordPress Coding Standards
-        run: |
-          php vendor/bin/phpcs --standard=phpcs.xml.dist \
-                              --report=json \
-                              --report-file=phpcs.json \
-                              --report-full \
-                              --report-summary \
-                              --report-source \
-                              --runtime-set ignore_warnings_on_exit 1
+        run: php vendor/bin/phpcs --standard=phpcs.xml.dist --report-full --report-json=phpcs.json
         continue-on-error: true
 
-      - name: Post PHPCS results as PR comments
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python .github/ai_reviewer.py
-
-  ai-review:
-    name: AI Code Review
-    runs-on: ubuntu-latest
-    needs: phpcs-review
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
+      # Setup Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -69,8 +41,9 @@ jobs:
       - name: Install Python dependencies
         run: python -m pip install --upgrade pip openai pygithub python-dotenv
 
+      # Run AI reviewer
       - name: Run AI Reviewer
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python .github/scripts/ai-reviewer.py
+        run: python .github/ai_reviewer.py
