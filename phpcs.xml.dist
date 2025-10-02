@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<ruleset name="WordPress Standards">
+  <description>PHP_CodeSniffer ruleset for WordPress</description>
+
+  <!-- Scan PHP files -->
+  <file>./</file>
+
+  <!-- Exclude vendor -->
+  <exclude-pattern>*/vendor/*</exclude-pattern>
+
+  <!-- Rules -->
+  <rule ref="WordPress"/>
+  <rule ref="WordPress-Extra"/>
+  <rule ref="WordPress-Docs"/>
+  <rule ref="WordPress-Core"/>
+
+  <!-- Report format -->
+  <arg value="p"/>
+</ruleset>
