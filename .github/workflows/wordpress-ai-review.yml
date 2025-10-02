@@ -50,7 +50,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python .github/scripts/phpcs-commenter.py
+          python .github/ai_reviewer.py
 
   ai-review:
     name: AI Code Review
