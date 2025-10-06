@@ -20,6 +20,23 @@ if not pr_number:
 
 pr = repo.get_pull(int(pr_number))
 
+# --- Get existing comments to avoid duplicates ---
+def get_existing_comments():
+    """Get all existing review comments to check for duplicates"""
+    existing_comments = {}
+    try:
+        reviews = pr.get_reviews()
+        for review in reviews:
+            comments = review.get_comments()
+            for comment in comments:
+                key = (comment.path, comment.position, comment.body.split('\n')[0])  # Use first line as identifier
+                existing_comments[key] = True
+    except Exception as e:
+        print(f"⚠️ Could not fetch existing comments: {e}")
+    return existing_comments
+
+existing_comments = get_existing_comments()
+
 # --- Load PHPCS Report ---
 phpcs_report = {}
 if os.path.exists("phpcs.json"):
@@ -48,6 +65,15 @@ if "files" in phpcs_report:
         for line, issues in issues_by_line.items():
             try:
                 comment_body = "\n".join(issues)
+                
+                # Check if similar comment already exists
+                first_issue = issues[0].split('\n')[0] if issues else ""
+                comment_key = (relative_path, line, first_issue)
+                
+                if comment_key in existing_comments:
+                    print(f"⏭️  Skipping duplicate comment for {relative_path} line {line}")
+                    continue
+                
                 pr.create_review_comment(
                     body=comment_body,
                     commit=pr.head.sha,
@@ -55,11 +81,35 @@ if "files" in phpcs_report:
                     line=line
                 )
                 print(f"✅ Added PHPCS review comment for {relative_path} line {line} ({len(issues)} issues)")
+                
+                # Add to existing comments to avoid duplicates in same run
+                existing_comments[comment_key] = True
+                
             except Exception as e:
                 print(f"❌ Could not add PHPCS review comment for {relative_path} line {line}: {e}")
 
 # --- AI Review (per file) ---
+# Get existing AI reviews to avoid duplicates
+existing_ai_reviews = {}
+try:
+    reviews = pr.get_reviews()
+    for review in reviews:
+        if review.body and "🤖 AI Review for" in review.body:
+            # Extract filename from review body
+            import re
+            match = re.search(r"🤖 AI Review for `([^`]+)`", review.body)
+            if match:
+                filename = match.group(1)
+                existing_ai_reviews[filename] = True
+except Exception as e:
+    print(f"⚠️ Could not fetch existing AI reviews: {e}")
+
 for f in pr.get_files():
+    # Skip if AI review already exists for this file
+    if f.filename in existing_ai_reviews:
+        print(f"⏭️  Skipping AI review for {f.filename} - already exists")
+        continue
+        
     diff = f.patch
     if not diff:
         continue
@@ -69,7 +119,7 @@ for f in pr.get_files():
     Review this code diff for:
     - WordPress Coding Standards (WPCS)
     - Security (sanitization, escaping, nonce, SQL injection, XSS, CSRF)
-    - Good practices (hooks, OOP, internationalization, performance, function prefixes)
+    - Good practices (hooks, OOP, internationalization, performance, function prefix with loginpress_)
     - Suggest improvements with examples
     Code diff:\n{diff}
     """
@@ -94,6 +144,10 @@ for f in pr.get_files():
                 event="COMMENT"
             )
             print(f"✅ Added AI review for {f.filename}")
+            
+            # Mark as reviewed to avoid duplicates
+            existing_ai_reviews[f.filename] = True
+            
         except Exception as e:
             print(f"❌ Could not add AI review for {f.filename}: {e}")
 
