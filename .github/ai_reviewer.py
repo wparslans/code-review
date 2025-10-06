@@ -69,7 +69,7 @@ for f in pr.get_files():
     Review this code diff for:
     - WordPress Coding Standards (WPCS)
     - Security (sanitization, escaping, nonce, SQL injection, XSS, CSRF)
-    - Good practices (hooks, OOP, internationalization, performance, function prefix with loginpress_)
+    - Good practices (hooks, OOP, internationalization, performance, function prefixes)
     - Suggest improvements with examples
     Code diff:\n{diff}
     """
