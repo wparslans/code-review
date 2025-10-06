@@ -1,0 +1,49 @@
+name: WordPress AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write   # ✅ allows posting PR comments
+  issues: write          # ✅ allows posting issue-style comments
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Setup PHP & Composer for PHPCS
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer, phpcs
+
+      - name: Install PHP dependencies
+        run: composer install --ignore-platform-reqs --no-scripts --no-progress
+
+      # Run PHPCS and always continue (don't stop workflow on errors)
+      - name: Run WordPress Coding Standards
+        run: php vendor/bin/phpcs --standard=phpcs.xml.dist --report-full --report-json=phpcs.json
+        continue-on-error: true
+
+      # Setup Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install Python dependencies
+        run: python -m pip install --upgrade pip openai pygithub python-dotenv
+
+      # Run AI reviewer
+      - name: Run AI Reviewer
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/ai_reviewer.py
